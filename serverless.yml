@@ -6,6 +6,7 @@ bref:
 provider:
   name: aws
   region: us-east-1
+  stage: ${opt:stage, 'prod'}
   iam:
     role:
       statements:
@@ -14,8 +15,8 @@ provider:
             - s3:GetObject
             - s3:ListBucket
           Resource:
-            - arn:aws:s3:::${env:S3_BUCKET}
-            - arn:aws:s3:::${env:S3_BUCKET}/*
+            - !GetAtt WPUpdateBucket.Arn
+            - !Sub '${WPUpdateBucket.Arn}/*'
 
 functions:
   web:
@@ -25,7 +26,7 @@ functions:
     timeout: 28 # in seconds (API Gateway has a max timeout of 29 seconds)
     environment:
       S3_BUCKET: !Ref WPUpdateBucket
-      S3_PREFIX: ${env:S3_PREFIX, ''}
+      S3_PREFIX: ${env:S3_PREFIX, 'packages/'}
     events:
       - httpApi: '*'
 
@@ -33,6 +34,12 @@ resources:
   Resources:
     WPUpdateBucket:
       Type: AWS::S3::Bucket
+      Properties:
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          IgnorePublicAcls: true
+          BlockPublicPolicy: false
+          RestrictPublicBuckets: false
     # IAM policy that makes the bucket publicly readable
     WPUpdateBucketPolicy:
       Type: AWS::S3::BucketPolicy

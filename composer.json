@@ -20,5 +20,16 @@
 	},
 	"suggest": {
 		"ext-mbstring": "Used for escaping log values in a utf8 compatible manner. If the extension isn't installed logged values are handled as single-byte character strings."
+	},
+	"scripts": {
+		"pre-autoload-dump": [
+			"Aws\\Script\\Composer\\Composer::removeUnusedServices"
+		]
+	},
+	"extra": {
+		"aws/aws-sdk-php": [
+			"Lambda",
+			"S3"
+		]
 	}
 }
