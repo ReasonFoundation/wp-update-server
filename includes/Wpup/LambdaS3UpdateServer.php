@@ -1,7 +1,7 @@
 <?php
 use Aws\S3\S3Client;
 
-class Wpup_S3UpdateServer extends Wpup_UpdateServer {
+class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     /** @var S3Client */
     protected $s3Client;
 
@@ -22,6 +22,13 @@ class Wpup_S3UpdateServer extends Wpup_UpdateServer {
         $this->s3Client = $s3Client;
         $this->bucketName = $bucketName;
         $this->prefix = rtrim($prefix, '/') . '/';
+
+        // Redefine cache to use Lambda's writable /tmp directory.
+        $cacheDir = '/tmp/wp-update-server/cache';
+        if ( !is_dir($cacheDir) ) {
+            mkdir($cacheDir, 0755, true);
+        }
+        $this->cache = new Wpup_FileCache($cacheDir);
     }
 
     /**
@@ -34,49 +41,61 @@ class Wpup_S3UpdateServer extends Wpup_UpdateServer {
         $safeSlug = preg_replace('@[^a-z0-9\-_\.,+!]@i', '', $slug);
         $s3Key = $this->prefix . $safeSlug . '.zip';
 
-        if (!$this->s3Client->doesObjectExist($this->bucketName, $s3Key)) {
-            return null;
+        $localFile = '/tmp/wp-update-server/packages/' . $safeSlug . '.zip';
+        $localDir = dirname($localFile);
+        if ( !is_dir($localDir) ) {
+            mkdir($localDir, 0755, true);
         }
 
-        $localFile = '/tmp/' . $safeSlug . '.zip';
-        
-        // Check if we already have it locally and if it's up to date
-        // Note: For Lambda this is probably just for the current request context unless /tmp persists
-        $this->s3Client->getObject(array(
-            'Bucket' => $this->bucketName,
-            'Key'    => $s3Key,
-            'SaveAs' => $localFile,
-        ));
+        // Check if we already have it locally
+        if ( !is_file($localFile) ) {
+            if ( !$this->s3Client->doesObjectExist($this->bucketName, $s3Key) ) {
+                return null;
+            }
+
+            $this->s3Client->getObject(array(
+                'Bucket' => $this->bucketName,
+                'Key'    => $s3Key,
+                'SaveAs' => $localFile,
+            ));
+        }
 
         return call_user_func($this->packageFileLoader, $localFile, $slug, $this->cache);
     }
 
     /**
-     * For S3, we might want to override download logic to redirect to S3 Presigned URL
-     * or stream it from S3.
-     * 
-     * Streaming it from S3:
+     * Generate a download URL for a package.
+     *
+     * For S3, we use a pre-signed URL to offload the download traffic.
+     *
+     * @param Wpup_Package $package
+     * @return string
      */
-    protected function actionDownload(Wpup_Request $request) {
-        $package = $request->package;
-        $safeSlug = preg_replace('@[^a-z0-9\-_\.,+!]@i', $package->slug);
+    protected function generateDownloadUrl(Wpup_Package $package) {
+        $safeSlug = preg_replace('@[^a-z0-9\-_\.,+!]@i', '', $package->slug);
         $s3Key = $this->prefix . $safeSlug . '.zip';
 
-        try {
-            $result = $this->s3Client->getObject(array(
-                'Bucket' => $this->bucketName,
-                'Key'    => $s3Key,
-            ));
+        $command = $this->s3Client->getCommand('GetObject', array(
+            'Bucket' => $this->bucketName,
+            'Key'    => $s3Key,
+        ));
 
-            header('Content-Type: application/zip');
-            header('Content-Disposition: attachment; filename="' . $package->slug . '.zip"');
-            header('Content-Transfer-Encoding: binary');
-            header('Content-Length: ' . $result['ContentLength']);
+        $request = $this->s3Client->createPresignedRequest($command, '+15 minutes');
+        return (string)$request->getUri();
+    }
 
-            echo $result['Body'];
-        } catch (Exception $e) {
-            $this->exitWithError('Failed to download package from S3.', 500);
-        }
+    /**
+     * For S3, we might want to override download logic to redirect to S3 Presigned URL
+     * or stream it from S3.
+     *
+     * We've implemented generateDownloadUrl to use presigned URLs, so this
+     * actionDownload might not be called if the client follows the URL directly.
+     * However, if it is called, we can still stream it or redirect.
+     */
+    protected function actionDownload(Wpup_Request $request) {
+        $url = $this->generateDownloadUrl($request->package);
+        header('Location: ' . $url, true, 302);
+        exit;
     }
     
     /**
