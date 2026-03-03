@@ -38,7 +38,7 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
      * @return Wpup_Package A package object or NULL if the plugin/theme was not found.
      */
     protected function findPackage($slug) {
-        $safeSlug = preg_replace('@[^a-z0-9\-_\.,+!]@i', '', $slug);
+        $safeSlug = preg_replace('@[^a-z0-9\-_.,+!]@i', '', $slug);
         $s3Key = $this->prefix . $safeSlug . '.zip';
 
         $localFile = '/tmp/wp-update-server/packages/' . $safeSlug . '.zip';
@@ -72,7 +72,7 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
      * @return string
      */
     protected function generateDownloadUrl(Wpup_Package $package) {
-        $safeSlug = preg_replace('@[^a-z0-9\-_\.,+!]@i', '', $package->slug);
+        $safeSlug = preg_replace('@[^a-z0-9\-_.,+!]@i', '', $package->slug);
         $s3Key = $this->prefix . $safeSlug . '.zip';
 
         $command = $this->s3Client->getCommand('GetObject', array(
