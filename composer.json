@@ -1,5 +1,5 @@
 {
-	"name": "yahnis-elsts/wp-update-server",
+	"name": "reason-dev/wp-update-server",
 	"description": "Custom update API server for WordPress plugins and themes.",
 	"keywords": ["wordpress", "plugin updates", "automatic updates", "theme updates"],
 	"homepage": "https://github.com/YahnisElsts/wp-update-server/",
@@ -14,7 +14,9 @@
 	],
 	"require": {
 		"php": ">=5.3.0",
-		"ext-json": "*"
+		"ext-json": "*",
+		"bref/bref": "^3.0",
+		"aws/aws-sdk-php": "^3.0"
 	},
 	"suggest": {
 		"ext-mbstring": "Used for escaping log values in a utf8 compatible manner. If the extension isn't installed logged values are handled as single-byte character strings."
