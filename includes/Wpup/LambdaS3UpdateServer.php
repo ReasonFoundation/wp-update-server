@@ -39,23 +39,49 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
      */
     protected function findPackage($slug) {
         $safeSlug = preg_replace('@[^a-z0-9\-_.,+!]@i', '', $slug);
-        $s3Key = $this->prefix . $safeSlug . '.zip';
 
-        $localFile = '/tmp/wp-update-server/packages/' . $safeSlug . '.zip';
+        // List objects in the bucket with our prefix.
+        $results = $this->s3Client->listObjectsV2(array(
+            'Bucket' => $this->bucketName,
+            'Prefix' => $this->prefix . $safeSlug,
+        ));
+
+        $bestKey = null;
+        $highestVersion = null;
+
+        if (isset($results['Contents'])) {
+            foreach ($results['Contents'] as $object) {
+                $key = $object['Key'];
+                $filename = basename($key);
+
+                // Match slug.zip or slug-version.zip
+                $pattern = '/^' . preg_quote($safeSlug, '/') . '(?:-(.+))?\.zip$/i';
+                if (preg_match($pattern, $filename, $matches)) {
+                    $version = isset($matches[1]) ? $matches[1] : '0.0.0';
+
+                    if ($highestVersion === null || version_compare($version, $highestVersion, '>')) {
+                        $highestVersion = $version;
+                        $bestKey = $key;
+                    }
+                }
+            }
+        }
+
+        if (!$bestKey) {
+            return null;
+        }
+
+        $localFile = '/tmp/wp-update-server/packages/' . basename($bestKey);
         $localDir = dirname($localFile);
-        if ( !is_dir($localDir) ) {
+        if (!is_dir($localDir)) {
             mkdir($localDir, 0755, true);
         }
 
         // Check if we already have it locally
-        if ( !is_file($localFile) ) {
-            if ( !$this->s3Client->doesObjectExist($this->bucketName, $s3Key) ) {
-                return null;
-            }
-
+        if (!is_file($localFile)) {
             $this->s3Client->getObject(array(
                 'Bucket' => $this->bucketName,
-                'Key'    => $s3Key,
+                'Key'    => $bestKey,
                 'SaveAs' => $localFile,
             ));
         }
@@ -72,8 +98,9 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
      * @return string
      */
     protected function generateDownloadUrl(Wpup_Package $package) {
-        $safeSlug = preg_replace('@[^a-z0-9\-_.,+!]@i', '', $package->slug);
-        $s3Key = $this->prefix . $safeSlug . '.zip';
+        // The package filename is the local path in /tmp.
+        // We need to map it back to the S3 key.
+        $s3Key = $this->prefix . basename($package->getFilename());
 
         $command = $this->s3Client->getCommand('GetObject', array(
             'Bucket' => $this->bucketName,
