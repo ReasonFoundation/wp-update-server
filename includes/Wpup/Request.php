@@ -33,6 +33,31 @@ class Wpup_Request {
 		$this->action = preg_replace('@[^a-z0-9\-_]@i', '', $this->param('action', ''));
 		$this->slug = preg_replace('@[:?/\\\]@i', '', $this->param('slug', ''));
 
+		//Support pretty URLs: /slug/?action=...
+		if ( $this->slug === '' && isset($_SERVER['REQUEST_URI']) ) {
+			$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+			//If the server is in a subdirectory, we might need to strip it.
+			//But for Lambda/Bref, usually REQUEST_URI is the full path from the root of the API Gateway.
+			
+			//Let's see if we can guess the base path.
+			$scriptName = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : '';
+			$basePath = dirname($scriptName);
+			if ( $basePath === DIRECTORY_SEPARATOR ) {
+				$basePath = '';
+			}
+			
+			$path = $requestUri;
+			if ( $basePath !== '' && strpos($path, $basePath) === 0 ) {
+				$path = substr($path, strlen($basePath));
+			}
+			
+			$path = trim($path, '/');
+			if ( $path !== '' && $path !== 'index.php' ) {
+				$parts = explode('/', $path);
+				$this->slug = preg_replace('@[:?/\\\]@i', '', $parts[0]);
+			}
+		}
+
 		//If the request was made via the WordPress HTTP API we can usually
 		//get WordPress version and site URL from the user agent.
 		$userAgent = $this->headers->get('User-Agent', '');

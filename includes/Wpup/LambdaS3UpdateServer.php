@@ -159,7 +159,7 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
             'ip'                => $loggedIp,
             'http_method'       => $request->httpMethod,
             'action'            => $request->param('action', '-'),
-            'slug'              => $request->param('slug', '-'),
+            'slug'              => $request->slug !== '' ? $request->slug : '-',
             'installed_version' => $request->param('installed_version', '-'),
             'wp_version'        => isset($request->wpVersion) ? $request->wpVersion : '-',
             'site_url'          => isset($request->wpSiteUrl) ? $request->wpSiteUrl : '-',
@@ -185,16 +185,20 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     }
 
 	/**
-	 * Basic request validation. Every request must specify an action and a valid package slug.
+	 * Guess the Server Url based on the current request.
 	 *
-	 * @param Wpup_Request $request
+	 * Defaults to the current URL minus the query and "index.php".
+	 *
+	 * @static
+	 *
+	 * @return string Url
 	 */
-	protected function validateRequest($request) {
-		if ( $request->action === '' ) {
-			$this->exitWithError('You must specify an action.', 400);
+	public static function guessServerUrl() {
+		$serverUrl = parent::guessServerUrl();
+		//Make sure there's a trailing slash.
+		if ( substr($serverUrl, -1) !== '/' ) {
+			$serverUrl .= '/';
 		}
-		if ( $request->package === null ) {
-			$this->exitWithError('Package not found', 404);
-		}
+		return $serverUrl;
 	}
 }

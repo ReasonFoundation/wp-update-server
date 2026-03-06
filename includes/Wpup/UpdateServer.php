@@ -410,8 +410,9 @@ class Wpup_UpdateServer {
 		//The current implementation is trivially simple, but you could override this method
 		//to (for example) create URLs that don't rely on the directory being public.
 		$directory = $this->normalizeFilePath($this->assetDirectories[$assetType]);
-		if ( strpos($directory, $this->serverDirectory) === 0 ) {
-			$subDirectory = substr($directory, strlen($this->serverDirectory) + 1);
+		$serverDir = $this->normalizeFilePath($this->serverDirectory);
+		if ( strpos($directory, $serverDir) === 0 ) {
+			$subDirectory = substr($directory, strlen($serverDir) + 1);
 		} else {
 			$subDirectory = basename($directory);
 		}
@@ -455,7 +456,7 @@ class Wpup_UpdateServer {
 				'ip'                => $loggedIp,
 				'http_method'       => $request->httpMethod,
 				'action'            => $request->param('action', '-'),
-				'slug'              => $request->param('slug', '-'),
+				'slug'              => $request->slug !== '' ? $request->slug : '-',
 				'installed_version' => $request->param('installed_version', '-'),
 				'wp_version'        => isset($request->wpVersion) ? $request->wpVersion : '-',
 				'site_url'          => isset($request->wpSiteUrl) ? $request->wpSiteUrl : '-',
