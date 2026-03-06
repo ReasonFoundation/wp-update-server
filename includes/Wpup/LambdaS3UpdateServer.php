@@ -40,10 +40,10 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     protected function findPackage($slug) {
         $safeSlug = preg_replace('@[^a-z0-9\-_.,+!]@i', '', $slug);
 
-        // List objects in the bucket with our prefix.
+        // List objects in the bucket with our prefix + slug directory.
         $results = $this->s3Client->listObjectsV2(array(
             'Bucket' => $this->bucketName,
-            'Prefix' => $this->prefix . $safeSlug,
+            'Prefix' => $this->prefix . $safeSlug . '/',
         ));
 
         $bestKey = null;
@@ -71,7 +71,8 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
             return null;
         }
 
-        $localFile = '/tmp/wp-update-server/packages/' . basename($bestKey);
+        // Local cache: /tmp/wp-update-server/packages/<slug>/<basename>
+        $localFile = '/tmp/wp-update-server/packages/' . $safeSlug . '/' . basename($bestKey);
         $localDir = dirname($localFile);
         if (!is_dir($localDir)) {
             mkdir($localDir, 0755, true);
@@ -86,7 +87,20 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
             ));
         }
 
-        return call_user_func($this->packageFileLoader, $localFile, $slug, $this->cache);
+        $package = call_user_func($this->packageFileLoader, $localFile, $slug, $this->cache);
+        if ($package instanceof Wpup_Package) {
+            // Attach the S3 key to metadata so generateDownloadUrl can use it.
+            $metadata = $package->getMetadata();
+            $metadata['s3_key'] = $bestKey;
+            
+            // We need a way to set the metadata back. 
+            // Since we can't easily modify Wpup_Package's protected $metadata,
+            // we'll rely on our generateDownloadUrl to know about this.
+            // Actually, we can just create a new Wpup_Package with the updated metadata.
+            return new Wpup_Package($package->slug, $package->getFilename(), $metadata);
+        }
+
+        return $package;
     }
 
     /**
@@ -98,9 +112,13 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
      * @return string
      */
     protected function generateDownloadUrl(Wpup_Package $package) {
-        // The package filename is the local path in /tmp.
-        // We need to map it back to the S3 key.
-        $s3Key = $this->prefix . basename($package->getFilename());
+        $metadata = $package->getMetadata();
+        $s3Key = isset($metadata['s3_key']) ? $metadata['s3_key'] : null;
+
+        if (!$s3Key) {
+            // Fallback to old behavior if s3_key is missing.
+            $s3Key = $this->prefix . basename($package->getFilename());
+        }
 
         $command = $this->s3Client->getCommand('GetObject', array(
             'Bucket' => $this->bucketName,
@@ -165,4 +183,18 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
         // Log to stderr for Bref/CloudWatch using error_log() which is more idiomatic.
         error_log($line);
     }
+
+	/**
+	 * Basic request validation. Every request must specify an action and a valid package slug.
+	 *
+	 * @param Wpup_Request $request
+	 */
+	protected function validateRequest($request) {
+		if ( $request->action === '' ) {
+			$this->exitWithError('You must specify an action.', 400);
+		}
+		if ( $request->package === null ) {
+			$this->exitWithError('Package not found', 404);
+		}
+	}
 }
