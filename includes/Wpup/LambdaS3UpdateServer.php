@@ -11,7 +11,7 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     /** @var string */
     protected $prefix;
 
-    /** @var string Shared secret required for get_metadata when non-empty. */
+    /** @var string Shared secret required for get_metadata and download when non-empty. */
     protected $simpleUpdateKey = '';
 
     /**
@@ -20,7 +20,7 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
      * @param string $bucketName
      * @param string $prefix
      * @param string $simpleUpdateKey Optional shared secret. When non-empty, clients must
-     *                                supply a matching key to call get_metadata.
+     *                                supply a matching key to call get_metadata or download.
      */
     public function __construct($serverUrl, S3Client $s3Client, $bucketName, $prefix = '', $simpleUpdateKey = '') {
         parent::__construct($serverUrl, '/tmp'); // Package directory is not used for S3
@@ -110,14 +110,42 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     }
 
     /**
-     * Generate a download URL for a package.
+     * Generate the download URL that goes into the metadata response.
      *
-     * For S3, we use a pre-signed URL to offload the download traffic.
+     * This points back at this server's own `download` action rather than straight at S3,
+     * so every download passes through checkAuthorization(). WordPress fetches this URL
+     * with a plain GET (no custom headers), so when SIMPLE_UPDATE_KEY is set the key is
+     * carried as a query parameter. It is only ever handed to clients that already
+     * presented the key to get_metadata.
+     *
+     * Pointing at the server (instead of embedding a presigned S3 URL) also means the URL
+     * doesn't go stale: WordPress may cache metadata for hours, while presigned URLs
+     * expire in minutes.
      *
      * @param Wpup_Package $package
      * @return string
      */
     protected function generateDownloadUrl(Wpup_Package $package) {
+        $query = array(
+            'action' => 'download',
+            'slug'   => $package->slug,
+        );
+        if ($this->simpleUpdateKey !== '') {
+            $query['key'] = $this->simpleUpdateKey;
+        }
+        return self::addQueryArg($query, $this->serverUrl);
+    }
+
+    /**
+     * Create a short-lived presigned S3 URL for a package.
+     *
+     * The bucket is private; this URL is signed with the Lambda role's credentials and is
+     * the only way a client can fetch the ZIP directly from S3.
+     *
+     * @param Wpup_Package $package
+     * @return string
+     */
+    protected function generatePresignedUrl(Wpup_Package $package) {
         $metadata = $package->getMetadata();
         $s3Key = isset($metadata['s3_key']) ? $metadata['s3_key'] : null;
 
@@ -136,14 +164,12 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     }
 
     /**
-     * Gate the get_metadata action behind a shared secret when SIMPLE_UPDATE_KEY is set.
+     * Gate the get_metadata and download actions behind a shared secret when
+     * SIMPLE_UPDATE_KEY is set.
      *
      * The client may send the key as either:
      *   - an Authorization: Bearer <key> header, or
      *   - a "key" query parameter.
-     *
-     * Other actions (notably `download`, which is served via a presigned S3 URL produced
-     * by get_metadata) are not gated here — the gate on get_metadata is sufficient.
      *
      * @param Wpup_Request $request
      */
@@ -151,7 +177,7 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
         if ($this->simpleUpdateKey === '') {
             return;
         }
-        if ($request->action !== 'get_metadata') {
+        if ($request->action !== 'get_metadata' && $request->action !== 'download') {
             return;
         }
 
@@ -178,19 +204,16 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     }
 
     /**
-     * For S3, we might want to override download logic to redirect to S3 Presigned URL
-     * or stream it from S3.
+     * Redirect an authorized download request to a fresh presigned S3 URL.
      *
-     * We've implemented generateDownloadUrl to use presigned URLs, so this
-     * actionDownload might not be called if the client follows the URL directly.
-     * However, if it is called, we can still stream it or redirect.
+     * @param Wpup_Request $request
      */
     protected function actionDownload(Wpup_Request $request) {
-        $url = $this->generateDownloadUrl($request->package);
+        $url = $this->generatePresignedUrl($request->package);
         header('Location: ' . $url, true, 302);
         exit;
     }
-    
+
     /**
      * Logging needs to be adapted for Lambda.
      * stderr is captured by CloudWatch.

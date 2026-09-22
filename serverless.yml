@@ -27,7 +27,7 @@ functions:
     environment:
       S3_BUCKET: !Ref WPUpdateBucket
       S3_PREFIX: ${env:S3_PREFIX, 'packages/'}
-      # Shared secret that gates the `get_metadata` action. Leave empty/unset to disable the gate.
+      # Shared secret that gates the `get_metadata` and `download` actions. Leave empty/unset to disable the gate.
       # Create/rotate per stage with the Bref CLI:
       #   vendor/bin/bref secret:create --name SIMPLE_UPDATE_KEY --value '<random-string>' --stage prod
       # This stores a SecureString at /${self:service}/${stage}/SIMPLE_UPDATE_KEY in SSM Parameter Store.
@@ -40,22 +40,14 @@ resources:
     WPUpdateBucket:
       Type: AWS::S3::Bucket
       Properties:
+        # Fully private. Nothing reads the bucket directly except the Lambda (via its IAM
+        # role above) and clients holding a presigned URL the Lambda handed them after
+        # checking SIMPLE_UPDATE_KEY.
         PublicAccessBlockConfiguration:
           BlockPublicAcls: true
           IgnorePublicAcls: true
-          BlockPublicPolicy: false
-          RestrictPublicBuckets: false
-    # IAM policy that makes the bucket publicly readable
-    WPUpdateBucketPolicy:
-      Type: AWS::S3::BucketPolicy
-      Properties:
-        Bucket: !Ref WPUpdateBucket
-        PolicyDocument:
-          Statement:
-            -   Effect: Allow
-                Principal: '*' # everyone
-                Action: s3:GetObject
-                Resource: !Sub '${WPUpdateBucket.Arn}/*'
+          BlockPublicPolicy: true
+          RestrictPublicBuckets: true
 
 plugins:
   - ./vendor/bref/bref
