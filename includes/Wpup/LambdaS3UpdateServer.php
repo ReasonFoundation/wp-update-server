@@ -11,17 +11,23 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     /** @var string */
     protected $prefix;
 
+    /** @var string Shared secret required for get_metadata when non-empty. */
+    protected $simpleUpdateKey = '';
+
     /**
      * @param string $serverUrl
      * @param S3Client $s3Client
      * @param string $bucketName
      * @param string $prefix
+     * @param string $simpleUpdateKey Optional shared secret. When non-empty, clients must
+     *                                supply a matching key to call get_metadata.
      */
-    public function __construct($serverUrl, S3Client $s3Client, $bucketName, $prefix = '') {
+    public function __construct($serverUrl, S3Client $s3Client, $bucketName, $prefix = '', $simpleUpdateKey = '') {
         parent::__construct($serverUrl, '/tmp'); // Package directory is not used for S3
         $this->s3Client = $s3Client;
         $this->bucketName = $bucketName;
         $this->prefix = rtrim($prefix, '/') . '/';
+        $this->simpleUpdateKey = (string)$simpleUpdateKey;
 
         // Redefine cache to use Lambda's writable /tmp directory.
         $cacheDir = '/tmp/wp-update-server/cache';
@@ -130,6 +136,48 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     }
 
     /**
+     * Gate the get_metadata action behind a shared secret when SIMPLE_UPDATE_KEY is set.
+     *
+     * The client may send the key as either:
+     *   - an Authorization: Bearer <key> header, or
+     *   - a "key" query parameter.
+     *
+     * Other actions (notably `download`, which is served via a presigned S3 URL produced
+     * by get_metadata) are not gated here — the gate on get_metadata is sufficient.
+     *
+     * @param Wpup_Request $request
+     */
+    protected function checkAuthorization($request) {
+        if ($this->simpleUpdateKey === '') {
+            return;
+        }
+        if ($request->action !== 'get_metadata') {
+            return;
+        }
+
+        $providedKey = $this->extractClientKey($request);
+        if ($providedKey === '' || !hash_equals($this->simpleUpdateKey, $providedKey)) {
+            $this->exitWithError('Invalid or missing update key.', 401);
+        }
+    }
+
+    /**
+     * Read the client-supplied key from the Authorization header or the `key` query arg.
+     *
+     * @param Wpup_Request $request
+     * @return string The supplied key, or '' if none was found.
+     */
+    protected function extractClientKey($request) {
+        $authHeader = $request->headers->get('Authorization', '');
+        if (is_string($authHeader) && stripos($authHeader, 'Bearer ') === 0) {
+            return trim(substr($authHeader, 7));
+        }
+
+        $queryKey = $request->param('key', '');
+        return is_string($queryKey) ? $queryKey : '';
+    }
+
+    /**
      * For S3, we might want to override download logic to redirect to S3 Presigned URL
      * or stream it from S3.
      *
@@ -182,6 +230,22 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
         
         // Log to stderr for Bref/CloudWatch using error_log() which is more idiomatic.
         error_log($line);
+    }
+
+    /**
+     * Redact the update key from the logged query string so it doesn't leak into CloudWatch.
+     *
+     * @param array $columns
+     * @param Wpup_Request|null $request
+     * @return array
+     */
+    protected function filterLogInfo($columns, $request = null) {
+        if ($request !== null && isset($request->query['key']) && $request->query['key'] !== '') {
+            $redactedQuery = $request->query;
+            $redactedQuery['key'] = 'REDACTED';
+            $columns['query'] = http_build_query($redactedQuery, '', '&');
+        }
+        return $columns;
     }
 
 	/**

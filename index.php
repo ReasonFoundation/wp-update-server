@@ -11,6 +11,13 @@ $s3Client = new S3Client(array(
 
 $bucketName = getenv('S3_BUCKET');
 $prefix = getenv('S3_PREFIX') ?: '';
+$simpleUpdateKey = getenv('SIMPLE_UPDATE_KEY') ?: '';
 
-$server = new Wpup_LambdaS3UpdateServer(Wpup_UpdateServer::guessServerUrl(), $s3Client, $bucketName, $prefix);
+$server = new Wpup_LambdaS3UpdateServer(
+    Wpup_UpdateServer::guessServerUrl(),
+    $s3Client,
+    $bucketName,
+    $prefix,
+    $simpleUpdateKey
+);
 $server->handleRequest();

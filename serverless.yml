@@ -27,6 +27,11 @@ functions:
     environment:
       S3_BUCKET: !Ref WPUpdateBucket
       S3_PREFIX: ${env:S3_PREFIX, 'packages/'}
+      # Shared secret that gates the `get_metadata` action. Leave empty/unset to disable the gate.
+      # Create/rotate per stage with the Bref CLI:
+      #   vendor/bin/bref secret:create --name SIMPLE_UPDATE_KEY --value '<random-string>' --stage prod
+      # This stores a SecureString at /${self:service}/${stage}/SIMPLE_UPDATE_KEY in SSM Parameter Store.
+      SIMPLE_UPDATE_KEY: ${ssm:/${self:service}/${self:provider.stage}/SIMPLE_UPDATE_KEY, ''}
     events:
       - httpApi: '*'
 
