@@ -3,7 +3,9 @@
 ## What this serves
 
 * Update-checker route (legacy WordPress sites): `/<slug>/?action=get_metadata`
-  and `?action=download`. Key via `Authorization: Bearer` or `?key=`.
+  and `?action=download`. Key via `Authorization: Bearer` or `?key=`. With
+  `SIMPLE_UPDATE_KEY` unset, this route is ungated — which is production's
+  state until the key is enforced.
 * Composer routes (vnext sites): `/packages.json`, `/p2/reason-dev/<slug>.json`,
   `/dist/reason-dev/<slug>/<slug>-<version>.zip`. Key via `Authorization: Bearer`
   only. Answer 503 if `SIMPLE_UPDATE_KEY` is unset.
@@ -16,7 +18,10 @@ This server only reads the bucket. Everything under `packages/`, `dist/`,
 * **Append-only.** Never overwrite or delete objects under `packages/`, `dist/`,
   `meta/` or `p2/` by hand, and never add an S3 lifecycle rule that expires
   them. Sites' `composer.lock` files download exact URLs forever; deleting a
-  version breaks every site that locked it, including their rollbacks.
+  version breaks every site that locked it, including their rollbacks. The
+  legacy publish workflow (`publish-plugin.yml`) still replaces zips under
+  `packages/` as it always has; this rule doesn't change that, since it
+  forbids manual edits and Composer never reads `packages/`.
 * **The one exception: `reason-dev/wpup-smoke`.** It is a throwaway test
   package written only by `tests/acceptance/composer-smoke.sh`. Each run
   uploads a new zip under `dist/` (append-only) and replaces
@@ -38,6 +43,12 @@ One key serves the whole fleet. Rotation touches, in this order:
    (`{"bearer":{"packages.reason.com":"<key>"}}`).
 3. The org secret `REASON_PACKAGES_UPDATES_KEY` used by plugin CI.
 4. SSM `/wp-update-server/prod/SIMPLE_UPDATE_KEY`, then redeploy.
+
+Step 1 only applies once legacy sites are actually sending the key; until
+then they send none. Whatever order these steps run in, there's a brief
+window where either legacy sites or Composer builds fail against the key
+in place at that moment. Accepting two keys at once during rotation would
+remove that window; that's possible future work, not implemented here.
 
 ## Test stage
 
