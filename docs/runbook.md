@@ -17,6 +17,12 @@ This server only reads the bucket. Everything under `packages/`, `dist/`,
   `meta/` or `p2/` by hand, and never add an S3 lifecycle rule that expires
   them. Sites' `composer.lock` files download exact URLs forever; deleting a
   version breaks every site that locked it, including their rollbacks.
+* **The one exception: `reason-dev/wpup-smoke`.** It is a throwaway test
+  package written only by `tests/acceptance/composer-smoke.sh`. Each run
+  uploads a new zip under `dist/` (append-only) and replaces
+  `p2/reason-dev/wpup-smoke.json` with just that run's version. No site
+  ever requires it, and it has no `meta/` sidecar, so the index rebuild
+  script leaves it alone.
 * **Rebuilding an index:** `scripts/rebuild-composer-index.sh` in
   `reason-wp-repo-actions` regenerates `p2/` from `meta/`. Use it instead of
   editing a p2 file.
@@ -38,3 +44,7 @@ One key serves the whole fleet. Rotation touches, in this order:
 `dev` stage: SSM `/wp-update-server/dev/SIMPLE_UPDATE_KEY`, stack
 `wp-update-server-dev`. Smoke test:
 `tests/acceptance/composer-smoke.sh <url> <bucket> <key>`.
+
+The smoke test's "query-string key is refused" check sends the key in a
+URL (`?key=`) on purpose, to prove it is rejected. Treat that key as
+possibly present in API Gateway access logs for that request.

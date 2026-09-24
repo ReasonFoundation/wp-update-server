@@ -25,6 +25,7 @@ cat > "$WORK/p2.json" <<JSON
 JSON
 
 aws s3api put-object --bucket "$BUCKET" --key "$DIST_KEY" --body "$WORK/$SLUG-$VERSION.zip" --if-none-match '*' >/dev/null
+# Replaces the smoke package's index on purpose (see docs/runbook.md, "The one exception").
 aws s3api put-object --bucket "$BUCKET" --key "p2/reason-dev/$SLUG.json" --body "$WORK/p2.json" --content-type application/json >/dev/null
 
 echo "== unauthenticated request is refused"
