@@ -272,20 +272,35 @@ class Wpup_LambdaS3UpdateServer extends Wpup_UpdateServer {
     }
 
 	/**
-	 * Guess the Server Url based on the current request.
+	 * Guess the absolute Server Url based on the current request.
 	 *
-	 * Defaults to the current URL minus the query and "index.php".
+	 * The parent implementation needs both HTTP_HOST and SCRIPT_NAME and falls back to a
+	 * bare "/" otherwise. Under Bref/API Gateway SCRIPT_NAME isn't reliably set, and a
+	 * relative "/" makes the metadata's download_url relative, which WordPress rejects
+	 * ("A valid URL was not provided"). The function always serves from the domain root,
+	 * so only the scheme and host are needed.
 	 *
 	 * @static
 	 *
 	 * @return string Url
 	 */
 	public static function guessServerUrl() {
-		$serverUrl = parent::guessServerUrl();
-		//Make sure there's a trailing slash.
-		if ( substr($serverUrl, -1) !== '/' ) {
-			$serverUrl .= '/';
+		$host = '';
+		if ( !empty($_SERVER['HTTP_HOST']) ) {
+			$host = strval($_SERVER['HTTP_HOST']);
+		} elseif ( !empty($_SERVER['SERVER_NAME']) ) {
+			$host = strval($_SERVER['SERVER_NAME']);
 		}
-		return $serverUrl;
+		if ( $host === '' ) {
+			return parent::guessServerUrl();
+		}
+
+		// API Gateway terminates TLS and reports the original scheme in X-Forwarded-Proto.
+		$isSsl = self::isSsl();
+		if ( isset($_SERVER['HTTP_X_FORWARDED_PROTO']) ) {
+			$isSsl = strtolower(strval($_SERVER['HTTP_X_FORWARDED_PROTO'])) === 'https';
+		}
+
+		return ($isSsl ? 'https' : 'http') . '://' . $host . '/';
 	}
 }

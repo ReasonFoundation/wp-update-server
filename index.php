@@ -14,7 +14,7 @@ $prefix = getenv('S3_PREFIX') ?: '';
 $simpleUpdateKey = getenv('SIMPLE_UPDATE_KEY') ?: '';
 
 $server = new Wpup_LambdaS3UpdateServer(
-    Wpup_UpdateServer::guessServerUrl(),
+    Wpup_LambdaS3UpdateServer::guessServerUrl(),
     $s3Client,
     $bucketName,
     $prefix,
