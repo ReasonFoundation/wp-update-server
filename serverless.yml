@@ -18,6 +18,13 @@ provider:
             - !GetAtt WPUpdateBucket.Arn
             - !Sub '${WPUpdateBucket.Arn}/*'
 
+package:
+  patterns:
+    - '!tests/**'
+    - '!docs/**'
+    - '!.github/**'
+    - '!.idea/**'
+
 functions:
   web:
     # `index.php` is the entrypoint of your application
