@@ -18,6 +18,16 @@ provider:
             - !GetAtt WPUpdateBucket.Arn
             - !Sub '${WPUpdateBucket.Arn}/*'
 
+package:
+  patterns:
+    - '!tests/**'
+    - '!docs/**'
+    - '!.github/**'
+    - '!.idea/**'
+    - '!.superpowers/**'
+    - '!.junie/**'
+    - '!test-s3-logic.php'
+
 functions:
   web:
     # `index.php` is the entrypoint of your application
@@ -27,10 +37,12 @@ functions:
     environment:
       S3_BUCKET: !Ref WPUpdateBucket
       S3_PREFIX: ${env:S3_PREFIX, 'packages/'}
-      # Shared secret that gates the `get_metadata` and `download` actions. Leave empty/unset to disable the gate.
-      # Create/rotate per stage with the Bref CLI:
-      #   vendor/bin/bref secret:create --name SIMPLE_UPDATE_KEY --value '<random-string>' --stage prod
-      # This stores a SecureString at /${self:service}/${stage}/SIMPLE_UPDATE_KEY in SSM Parameter Store.
+      # Shared secret that gates both the update-checker route (`get_metadata`/`download`)
+      # and the Composer routes (`/packages.json`, `/p2/...`, `/dist/...`). When empty or
+      # unset, the update-checker route is ungated, but the Composer routes return 503
+      # (they fail closed). Read at deploy time from SSM Parameter Store at
+      # /${self:service}/<stage>/SIMPLE_UPDATE_KEY. Set/rotate it with:
+      #   aws ssm put-parameter --region us-east-1 --name /wp-update-server/<stage>/SIMPLE_UPDATE_KEY --type SecureString --value '<key>'
       SIMPLE_UPDATE_KEY: ${ssm:/${self:service}/${self:provider.stage}/SIMPLE_UPDATE_KEY, ''}
     events:
       - httpApi: '*'
