@@ -56,7 +56,7 @@
   - `Wpup_ComposerRepository::handle(string $path, Wpup_Headers $headers): ?Wpup_ComposerResponse` — `null` means "not a Composer path".
   - `Wpup_ComposerRepository::isComposerPath(string $path): bool` (static).
 
-- [ ] **Step 1: Add the shared test helper**
+- [x] **Step 1: Add the shared test helper**
 
 `tests/check.php` (same helper the update checker uses):
 
@@ -81,7 +81,7 @@ function finish_tests() {
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `tests/composer-repository-test.php`:
 
@@ -217,12 +217,12 @@ check('S3 access denied: 500', make_repo(KEY, $mock)->handle('/p2/reason-dev/acm
 finish_tests();
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `php tests/composer-repository-test.php`
 Expected: fatal error `Class "Wpup_ComposerRepository" not found`.
 
-- [ ] **Step 4: Write the response class**
+- [x] **Step 4: Write the response class**
 
 `includes/Wpup/ComposerResponse.php`:
 
@@ -268,7 +268,7 @@ class Wpup_ComposerResponse {
 }
 ```
 
-- [ ] **Step 5: Write the router**
+- [x] **Step 5: Write the router**
 
 `includes/Wpup/ComposerRepository.php`:
 
@@ -414,12 +414,12 @@ require_once __DIR__ . '/includes/Wpup/ComposerResponse.php';
 require_once __DIR__ . '/includes/Wpup/ComposerRepository.php';
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `composer install && php tests/composer-repository-test.php`
 Expected: every line `PASS`, final line `ALL PASSED`, exit code 0.
 
-- [ ] **Step 7: Run the tests in CI**
+- [x] **Step 7: Run the tests in CI**
 
 `.github/workflows/tests.yml`:
 
@@ -452,7 +452,7 @@ jobs:
           exit $status
 ```
 
-- [ ] **Step 8: Keep tests and docs out of the Lambda package**
+- [x] **Step 8: Keep tests and docs out of the Lambda package**
 
 Bref zips the project directory as-is, so without this the new `tests/` and `docs/` folders ship to Lambda. In `serverless.yml`, add a top-level `package` block directly above the `functions:` key:
 
@@ -468,7 +468,7 @@ package:
 Run: `grep -n "^package:" -A5 serverless.yml`
 Expected: the block is present at the top level (same indentation as `functions:`).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git checkout -b feature/composer-routes
@@ -488,7 +488,7 @@ git commit -m "Add a read-only Composer repository router for reason-dev package
 - Consumes: `Wpup_ComposerRepository::handle()`, `Wpup_ComposerResponse::send()` (Task 1).
 - Produces: `wpup_route_composer(Wpup_ComposerRepository $repo, string $requestUri, array $headers): ?Wpup_ComposerResponse` in new file `includes/composer-routing.php` — the testable part of `index.php`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/index-routing-test.php`:
 
@@ -524,12 +524,12 @@ check('reserved path never falls through', wpup_route_composer($repo, '/meta/', 
 finish_tests();
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `php tests/index-routing-test.php`
 Expected: failure opening `includes/composer-routing.php`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `includes/composer-routing.php`:
 
@@ -594,7 +594,7 @@ $server = new Wpup_LambdaS3UpdateServer(
 $server->handleRequest();
 ```
 
-- [ ] **Step 4: Run all tests**
+- [x] **Step 4: Run all tests**
 
 Run: `for t in tests/*-test.php; do php "$t" || echo "FAILED: $t"; done`
 Expected: both scripts end `ALL PASSED`, no `FAILED:` lines.
@@ -602,7 +602,7 @@ Expected: both scripts end `ALL PASSED`, no `FAILED:` lines.
 Run: `php -l index.php && grep -c "Wpup_LambdaS3UpdateServer::guessServerUrl()" index.php`
 Expected: `No syntax errors detected`, then `1`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.php includes/composer-routing.php tests/index-routing-test.php
@@ -620,7 +620,9 @@ git commit -m "Serve Composer routes before the update-checker route"
 - Consumes: deployed Composer routes (Tasks 1–2).
 - Produces: `tests/acceptance/composer-smoke.sh <base-url> <bucket> <key>` — reused after the production deploy and by plan 2's canary.
 
-- [ ] **Step 1: Write the smoke script**
+- [x] **Step 1: Write the smoke script**
+
+> **Note:** the committed script (`5929908`) differs from the draft below. It refuses to run against a `*-prod-*` bucket, URL-encodes the query-string key, and uses `grep -F` for the lockfile check. The file in the repo is authoritative.
 
 `tests/acceptance/composer-smoke.sh`:
 
@@ -678,7 +680,9 @@ echo "PASS: Composer routes work end to end ($SLUG $VERSION)"
 
 `chmod +x tests/acceptance/composer-smoke.sh`
 
-- [ ] **Step 2: Deploy a `dev` stage**
+- [x] **Step 2: Deploy a `dev` stage**
+
+> **Done 2026-10-08, differently from below:** the dev key was set with `bref secret:create SIMPLE_UPDATE_KEY --env dev` (Bref Cloud), not `aws ssm put-parameter`. Dev is at `https://97u2hk4ec7.execute-api.us-east-1.amazonaws.com`, and `/packages.json` answers `401` without a key, so the deployed function has a non-empty key. Step 3 confirms it is the key that was set.
 
 Create the dev key at the exact SSM path `serverless.yml` reads, then deploy the `dev` environment with Bref Cloud. Use `aws ssm put-parameter` rather than `bref secret:create`: Bref doesn't document the path its command writes to, and a mismatch silently yields an empty key, which disables the gate.
 
@@ -696,7 +700,9 @@ aws cloudformation describe-stack-resources --stack-name wp-update-server-dev \
   --logical-resource-id WPUpdateBucket --query 'StackResources[0].PhysicalResourceId' --output text
 ```
 
-- [ ] **Step 3: Run the smoke test against dev**
+- [x] **Step 3: Run the smoke test against dev**
+
+> **Passed 2026-10-08:** `PASS: Composer routes work end to end (wpup-smoke 0.0.1791494471)`. This also confirms that the key set with `bref secret:create` is the key the deployed function enforces.
 
 Run: `tests/acceptance/composer-smoke.sh "<dev-api-url>" "<dev-bucket>" "$DEV_KEY"`
 Expected: final line `PASS: Composer routes work end to end (wpup-smoke 0.0.<n>)`.
@@ -713,7 +719,7 @@ Expected: `HTTP/2 302` (a redirect to a presigned S3 URL).
 
 Afterwards, restore the dev environment for local work with `composer install` (the deploy step installed without dev packages).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/acceptance/composer-smoke.sh
@@ -727,7 +733,7 @@ git commit -m "Add a Composer end-to-end smoke test for deployed stages"
 **Files:**
 - Create: `docs/runbook.md`
 
-- [ ] **Step 1: Write the runbook**
+- [x] **Step 1: Write the runbook**
 
 `docs/runbook.md`:
 
@@ -797,7 +803,7 @@ Run: `curl -s -o /dev/null -w '%{http_code}\n' https://packages.reason.com/packa
   ```
   Expected: `PASS: …`. The smoke package `reason-dev/wpup-smoke` stays in the bucket (append-only); that's intended and harmless.
 
-- [ ] **Step 4: Commit, push, open a pull request**
+- [x] **Step 4: Commit, push, open a pull request**
 
 ```bash
 git add docs/runbook.md
@@ -806,6 +812,8 @@ git push -u origin feature/composer-routes
 ```
 
 Open a PR into `master`; merge after review.
+
+> **Status 2026-10-08:** PR #5 is open (https://github.com/ReasonFoundation/wp-update-server/pull/5). It is not merged yet, and Steps 2–3 (production deploy and check) haven't been done.
 
 ---
 
