@@ -50,10 +50,14 @@ check('not composer: index.php', $repo->handle('/index.php', bearer(KEY)) === nu
 check('not composer: slug that merely starts with p2', $repo->handle('/p2x/', bearer(KEY)) === null);
 check('isComposerPath: dist', Wpup_ComposerRepository::isComposerPath('/dist/reason-dev/a/a-1.0.zip'));
 
-// --- fail closed when the key is not configured ---
+// --- no key configured: open, like the update-checker route ---
 $mock = new MockHandler();
-$res = make_repo('', $mock)->handle('/packages.json', bearer('anything'));
-check('empty key: 503', $res->status === 503);
+$mock->append(new Result(array('Body' => Utils::streamFor('{"packages":{}}'))));
+$open = make_repo('', $mock);
+check('empty key, no header: 200', $open->handle('/packages.json', new Wpup_Headers(array()))->status === 200);
+check('empty key, stray bearer: 200', $open->handle('/packages.json', bearer('anything'))->status === 200);
+check('empty key: p2 served', $open->handle('/p2/reason-dev/acme-widget.json', new Wpup_Headers(array()))->status === 200);
+check('empty key: unknown path still 404', $open->handle('/p2/', new Wpup_Headers(array()))->status === 404);
 
 // --- authorization ---
 $mock = new MockHandler();

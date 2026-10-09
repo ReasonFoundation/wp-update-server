@@ -8,7 +8,9 @@
   state until the key is enforced.
 * Composer routes (vnext sites): `/packages.json`, `/p2/reason-dev/<slug>.json`,
   `/dist/reason-dev/<slug>/<slug>-<version>.zip`. Key via `Authorization: Bearer`
-  only. Answer 503 if `SIMPLE_UPDATE_KEY` is unset.
+  only. Same rule as above: ungated while `SIMPLE_UPDATE_KEY` is unset, so a
+  Composer site can build against production before the legacy fleet sends the
+  key. Setting the key gates both routes in the same deploy.
 
 This server only reads the bucket. Everything under `packages/`, `dist/`,
 `meta/` and `p2/` is written by `reason-wp-repo-actions`.
