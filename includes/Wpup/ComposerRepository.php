@@ -10,10 +10,10 @@ use Aws\S3\S3Client;
  *   /p2/reason-dev/<slug>.json                         p2/reason-dev/<slug>.json
  *   /dist/reason-dev/<slug>/<slug>-<version>.zip       302 to a presigned URL
  *
- * Every route requires SIMPLE_UPDATE_KEY as "Authorization: Bearer <key>" and
- * fails closed (503) when the key isn't configured: premium plugin code sits
- * behind these routes. The key is never accepted from the query string here,
- * because Composer records download URLs in composer.lock.
+ * The key rule is the update-checker route's: while SIMPLE_UPDATE_KEY is unset
+ * the routes are open, and once it is set every route requires it as
+ * "Authorization: Bearer <key>". The key is never accepted from the query
+ * string here, because Composer records download URLs in composer.lock.
  */
 class Wpup_ComposerRepository {
 	const VENDOR = 'reason-dev';
@@ -53,10 +53,7 @@ class Wpup_ComposerRepository {
 		}
 		$path = ltrim((string)$path, '/');
 
-		if ( $this->key === '' ) {
-			return Wpup_ComposerResponse::error(503, 'The Composer repository is disabled: SIMPLE_UPDATE_KEY is not set.');
-		}
-		if ( !$this->isAuthorized($headers) ) {
+		if ( $this->key !== '' && !$this->isAuthorized($headers) ) {
 			$response = Wpup_ComposerResponse::error(401, 'Invalid or missing update key.');
 			$response->headers['WWW-Authenticate'] = 'Bearer realm="packages.reason.com"';
 			return $response;
