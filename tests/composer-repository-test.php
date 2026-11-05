@@ -66,7 +66,19 @@ $res = $repo->handle('/packages.json', new Wpup_Headers(array()));
 check('no header: 401', $res->status === 401);
 check('no header: WWW-Authenticate set', isset($res->headers['WWW-Authenticate']));
 check('wrong key: 401', $repo->handle('/packages.json', bearer('nope'))->status === 401);
-check('basic scheme: 401', $repo->handle('/packages.json', new Wpup_Headers(array('Authorization' => 'Basic ' . base64_encode('x:' . KEY))))->status === 401);
+function basic($credentials) {
+	return new Wpup_Headers(array('Authorization' => 'Basic ' . base64_encode($credentials)));
+}
+check('basic, key as password: 200', $repo->handle('/packages.json', basic('x:' . KEY))->status === 200);
+check('basic, empty username: 200', $repo->handle('/packages.json', basic(':' . KEY))->status === 200);
+check('basic, extra text after the key: 401', $repo->handle('/packages.json', basic('x:' . KEY . ':extra'))->status === 401);
+check('lowercase basic scheme: 200', $repo->handle('/packages.json', new Wpup_Headers(array('Authorization' => 'basic ' . base64_encode('x:' . KEY))))->status === 200);
+check('basic, wrong password: 401', $repo->handle('/packages.json', basic('x:nope'))->status === 401);
+check('basic, key as username: 401', $repo->handle('/packages.json', basic(KEY . ':x'))->status === 401);
+check('basic, no colon: 401', $repo->handle('/packages.json', basic(KEY))->status === 401);
+check('basic, not base64: 401', $repo->handle('/packages.json', new Wpup_Headers(array('Authorization' => 'Basic !!!')))->status === 401);
+check('basic, guards the dist route: 401', $repo->handle('/dist/reason-dev/acme-widget/acme-widget-1.4.2.zip', basic('x:nope'))->status === 401);
+check('unknown scheme: 401', $repo->handle('/packages.json', new Wpup_Headers(array('Authorization' => 'Token ' . KEY)))->status === 401);
 check('lowercase bearer scheme: 200', $repo->handle('/packages.json', new Wpup_Headers(array('Authorization' => 'bearer ' . KEY)))->status === 200);
 
 // --- packages.json ---

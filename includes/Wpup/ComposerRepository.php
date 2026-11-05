@@ -12,8 +12,10 @@ use Aws\S3\S3Client;
  *
  * The key rule is the update-checker route's: while SIMPLE_UPDATE_KEY is unset
  * the routes are open, and once it is set every route requires it as
- * "Authorization: Bearer <key>". The key is never accepted from the query
- * string here, because Composer records download URLs in composer.lock.
+ * "Authorization: Bearer <key>", or as the password of HTTP Basic auth (any
+ * username) for clients that cannot send a bearer token. The key is never
+ * accepted from the query string here, because Composer records download URLs
+ * in composer.lock.
  */
 class Wpup_ComposerRepository {
 	const VENDOR = 'reason-dev';
@@ -84,12 +86,28 @@ class Wpup_ComposerRepository {
 		return Wpup_ComposerResponse::error(404, 'Not found.');
 	}
 
+	/**
+	 * "Bearer <key>", or "Basic base64(<any user>:<key>)". Basic exists for
+	 * clients that can only send a username and password: Dependabot's
+	 * composer-repository registry has no token option.
+	 */
 	protected function isAuthorized(Wpup_Headers $headers) {
 		$header = $headers->get('Authorization', '');
-		if ( !is_string($header) || stripos($header, 'Bearer ') !== 0 ) {
+		if ( !is_string($header) ) {
 			return false;
 		}
-		return hash_equals($this->key, trim(substr($header, 7)));
+		if ( stripos($header, 'Bearer ') === 0 ) {
+			return hash_equals($this->key, trim(substr($header, 7)));
+		}
+		if ( stripos($header, 'Basic ') === 0 ) {
+			$decoded = base64_decode(trim(substr($header, 6)), true);
+			if ( !is_string($decoded) || strpos($decoded, ':') === false ) {
+				return false;
+			}
+			list(, $password) = explode(':', $decoded, 2);
+			return hash_equals($this->key, $password);
+		}
+		return false;
 	}
 
 	protected function serveP2($slug) {
