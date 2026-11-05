@@ -7,8 +7,10 @@
   `SIMPLE_UPDATE_KEY` unset, this route is ungated — which is production's
   state until the key is enforced.
 * Composer routes (vnext sites): `/packages.json`, `/p2/reason-dev/<slug>.json`,
-  `/dist/reason-dev/<slug>/<slug>-<version>.zip`. Key via `Authorization: Bearer`
-  only. Same rule as above: ungated while `SIMPLE_UPDATE_KEY` is unset, so a
+  `/dist/reason-dev/<slug>/<slug>-<version>.zip`. Key via `Authorization: Bearer`,
+  or as the HTTP Basic password with any username (for Dependabot, whose
+  `composer-repository` registry can only send a username and password).
+  Never from the query string. Same rule as above: ungated while `SIMPLE_UPDATE_KEY` is unset, so a
   Composer site can build against production before the legacy fleet sends the
   key. Setting the key gates both routes in the same deploy.
 
@@ -43,7 +45,9 @@ One key serves the whole fleet. Rotation touches, in this order:
    the old key until their constant changes.
 2. Every vnext site repo's `COMPOSER_AUTH_JSON` secret
    (`{"bearer":{"packages.reason.com":"<key>"}}`).
-3. The org secret `REASON_PACKAGES_UPDATES_KEY` used by plugin CI.
+3. The org secret `REASON_PACKAGES_UPDATES_KEY` used by plugin CI, in both
+   the Actions and the Dependabot secret stores (Dependabot runs read only the
+   latter, including `dependabot.yml` registries).
 4. SSM `/wp-update-server/prod/SIMPLE_UPDATE_KEY`, then redeploy.
 
 Step 1 only applies once legacy sites are actually sending the key; until
@@ -51,6 +55,28 @@ then they send none. Whatever order these steps run in, there's a brief
 window where either legacy sites or Composer builds fail against the key
 in place at that moment. Accepting two keys at once during rotation would
 remove that window; that's possible future work, not implemented here.
+
+## Dependabot in plugin and theme repos
+
+A repo whose Dependabot `composer` job resolves `reason-dev/*` packages needs a
+registry entry, because Dependabot can't send a bearer token:
+
+```yaml
+registries:
+  packages-reason:
+    type: composer-repository
+    url: https://packages.reason.com
+    username: dependabot
+    password: ${{ secrets.REASON_PACKAGES_UPDATES_KEY }}
+
+updates:
+  - package-ecosystem: composer
+    directory: /
+    registries: [packages-reason]
+```
+
+The username is ignored. The secret must exist in the org's **Dependabot**
+secret store; the Actions copy is not visible to Dependabot.
 
 ## Test stage
 
